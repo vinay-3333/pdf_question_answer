@@ -1,13 +1,16 @@
-
+from langchain_community.document_loaders import PyPDFLoader
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+# from langchain.embeddings import HuggingFaceEmbeddings
+# from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain_community.llms import Ollama
 from langchain.prompts import PromptTemplate
 import streamlit as st
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.docstore.document import Document
 
 
 
@@ -26,10 +29,6 @@ def get_pdf_text(pdf_docs):
 #     return documents
 
 
-# def get_text_chunk(documents):
-#     text_splitter=CharacterTextSplitter(chunk_size=10000,chunk_overlap=1000)
-#     docs = text_splitter.split_documents(documents=documents)
-#     return docs
 
 
 def get_text_chunk(text):
@@ -41,13 +40,11 @@ def get_text_chunk(text):
 
 
 
-def get_vector_store(docs,text_chunk):
-    embedding_model_name="sentence-transformers/all-mpnet-base=v2"
-    model_kwargs={"device":"cuda"}
-    embedding=HuggingFaceEmbeddings(
-        model_name=embedding_model_name,
-        model_kwargs=model_kwargs
-    )
+def get_vector_store(text_chunk):
+    # embedding_model_name="sentence-transformers/all-mpnet-base=v2"
+    # model_kwargs={"device":"cuda"}
+    embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    docs = [Document(page_content=text) for text in text_chunk]
     vector_store=FAISS.from_documents(docs,embedding)
     vector_store.save_local("faiss_index")
 
@@ -65,7 +62,8 @@ def get_conversational_chain(retriever):
     """
     llm = Ollama(model='llama3.1',
                  temperature=0.3)
-    
+    print(retriever)
+    # retriever = vector_store.as_retriever()
     prompt = PromptTemplate(template=prompt_template,input_variables=["Context","Question"])
     chain= RetrievalQA.from_chain_type(llm=llm,chain_type="stuff",retriever=retriever)
     return chain
@@ -73,18 +71,18 @@ def get_conversational_chain(retriever):
 
 
 def user_input(user_question):
-    embedding_model_name="sentence-transformers/all-mpnet-base=v2"
-    model_kwargs={"device":"cuda"}
-    embedding=HuggingFaceEmbeddings(
-        model_name=embedding_model_name,
-        model_kwargs=model_kwargs
-    )
-
+    # embedding_model_name="sentence-transformers/all-mpnet-base=v2"
+    # model_kwargs={"device":"cuda"}
+    # embedding=HuggingFaceEmbeddings(
+    #     model_name=embedding_model_name,
+    #     model_kwargs=model_kwargs
+    # )
+    embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
     new_db=FAISS.load_local("faiss_index",embedding,allow_dangerous_deserialization=True)
     
     docs= new_db.similarity_search(user_question)
 
-    chain =get_conversational_chain()
+    chain =get_conversational_chain(docs)
 
     response = chain(
         {
@@ -114,8 +112,9 @@ def main():
         if st.button("Submit & Process"):
             with st.spinner("Processing..."):
                 raw_text = get_pdf_text(pdf_docs)
+                print(raw_text)
                 text_chunks = get_text_chunk(raw_text)
-                get_vector_store(raw_text,text_chunks)
+                get_vector_store(text_chunks)
                 st.success("Done")
 
 
